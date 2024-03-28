@@ -1,5 +1,6 @@
-/flashmirror.code-workspace
+/*.code-workspace
 /sources.txt
 /old_*
+/*.old
 /web/
-/flash/
+/carts/*.p8.png
