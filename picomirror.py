@@ -3,13 +3,14 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 import re
 import shutil
+import string
 
 def process_file(file_path):
     with open(file_path, 'r') as file:
         for line in file:
             url = line.strip()
             pico = extract_pico(url, '.p8.png')
-            print(pico)
+            #print(pico)
             save_pico(pico[0], pico[1])
 
 def extract_pico(url, pattern):
@@ -22,8 +23,11 @@ def extract_pico(url, pattern):
     return title,shorturl+links[0].get('href')
 
 def save_pico(title, uri):
-    filename = './carts/'+title+".p8.png"
-    print("downloading "+uri+" to "+filename)
+    valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+    filename = ''.join(c for c in title if c in valid_chars)
+    #filename = filename.replace(' ','_') # I don't like spaces in filenames.
+    filename = './carts/'+filename+".p8.png"
+    print("Downloading \""+title+"\" from "+uri+" to "+filename)
     response = requests.get(uri, stream=True)
     if response.status_code == 200:
         with open(filename, 'wb') as out_file:
