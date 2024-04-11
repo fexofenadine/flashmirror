@@ -9,6 +9,7 @@ import urllib
 from math import ceil
 from pathlib import Path
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 #script_name = sys.argv[0]
 try:
@@ -19,16 +20,29 @@ except:
 def mirror_flash(page_uri):
     soup = BeautifulSoup(urllib.request.urlopen(page_uri),features="html5lib")
     title=soup.title.string
+
+    #try to find uploaded date
     try:
         uploaded=soup.find("dt", string="Uploaded").find_next_sibling("dd").text
     except:
-        uploaded="unknown"
+        try:
+            uploaded = soup.find(itemprop="datePublished").text
+        except:
+            try:
+                uploaded = soup.find("div", class_="game_pub_plays game_detail").text.split("Published\n")[1].split("\n")[0].strip()
+            except:
+                uploaded="unknown"
+    uploaded=uploaded.replace(".", "")
+
+    #remove everything after pipe (|) symbol (usually just the title, repeated)
+    title=title.split(" | ")[0].split(" : ")[0]
     #strip branding and unfriendly characters
     title=title.replace("–","-").replace("™","").replace("Play ","").replace(", a free online game on Kongregate","").replace(" - Presented by Newgrounds!","").replace(" | Free Games Online at Armor Games","").replace(" | Strategy Games", "").replace(" - Kizi Games","").replace("Totaljerkface.com - Home Of Happy Wheels - ","").replace(" - on Crazy Games","").replace(" | Free Online Game","")
     #capitalize words regardless of punctuation
     title=re.sub(r"(?<=[a-z])[\']([A-Z])", lambda x: x.group().lower(), title.title())
     #fix remaining capitalization exceptions and consistent naming conventions
     title=title.replace(" Ii", " II").replace("Fpa:", "Fpa").replace("Fpa", "Fancy Pants Adventures").replace("The Fancy ", "Fancy ").replace(" - Super Smash Flash","").replace(" Eom", " EOM").replace(" Td ", " Tower Defense ").replace(" Ver", " ver").replace(" version", " Version").replace(" V2"," v2").replace("Rs ", "RS ")
+    title=title.strip()
     print("Title: "+title+" ("+uploaded+")")
     if uploaded == "unknown":
         suffix="_"
@@ -36,13 +50,14 @@ def mirror_flash(page_uri):
         suffix=""
     friendly_title=title.lower().translate(str.maketrans('', '', string.punctuation)).replace("–","-").replace(" ","_").replace("__","_")+suffix
     filename="flash/"+friendly_title+"/"+friendly_title
-
+    parsed_url=urlparse(page_uri)
+    
     soup = requests.get(page_uri)
 
     #print(str(soup.text))
     #swf_uri=re.findall(r'(http(s?)\:\/\/(.*)\.swf)', str(soup.text))[0][0]
 
-    if "archive.org" in page_uri:
+    if "web.archive.org" in parsed_url.netloc:
         print("Wayback Machine archive detected")
         try:
             uri=re.findall('embed src="/web/(................)_/(http|ftp|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-]\.swf)', str(soup.content))[-1]
@@ -50,11 +65,20 @@ def mirror_flash(page_uri):
         except:
             uri=re.findall('(http|ftp|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-]\.swf)', str(soup.content))[-1]
             swf_uri=uri[0]+"://"+uri[1]+uri[2]
+            swf_uri=parsed_url.scheme+"://"+parsed_url.netloc+parsed_url.path.split("http")[0]+swf_uri           
+        #print("Wayback Machine URI: "+parsed_url.scheme+"://"+parsed_url.netloc+parsed_url.path)
+    elif "archive.org" in parsed_url.netloc:
+        print("Internet Archive detected")
+        try:
+            uri = re.search('<a class="format-summary download-pill" href="(.*?).swf', str(soup.text)).group(1)
+            swf_uri = "https://archive.org" + uri + ".swf"
+        except:
+            print("Failed to find SWF URI in Archive.org page")
+        #print(str(soup.text))
     else:
         print("Assuming live website")
         uri=re.findall('(http|ftp|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-]\.swf)', str(soup.content))[-1]
         swf_uri=uri[0]+"://"+uri[1]+uri[2]
-    print (swf_uri)
 
     print("Generating html wrapper")
     output_html = None
@@ -69,15 +93,16 @@ def mirror_flash(page_uri):
     output_file.parent.mkdir(exist_ok=True, parents=True)
     with open(output_file,'w') as f:
         f.write(output_html)
-
     #mirror flash file
-    print("downloading "+uri[-1])
-    response = requests.get(swf_uri, stream=True)
-    if response.status_code == 200:
-        with open(filename+".swf", 'wb') as out_file:
-            shutil.copyfileobj(response.raw, out_file)
-        del response
-
+    print("downloading "+swf_uri)
+    try:
+        response = requests.get(swf_uri, stream=True)
+        if response.status_code == 200:
+            with open(filename+".swf", 'wb') as out_file:
+                shutil.copyfileobj(response.raw, out_file)
+            del response
+    except requests.exceptions.RequestException as e:
+        print(e)
 #build mirror file(s)
 if page_uri:
     mirror_flash(page_uri)
